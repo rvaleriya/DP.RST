@@ -22,11 +22,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, windows-latest]
         r-version: [ '4.1.1' ]
         include:
-          - os: ubuntu-latest
-            r-version: '3.6.3'
           - os: windows-latest
             r-version: '3.6.3'
 
@@ -39,12 +37,6 @@ jobs:
           brew install tcl-tk pkg-config
           echo "TCL_LIBRARY=$(brew --prefix tcl-tk)/lib" >> $GITHUB_ENV
           echo "TK_LIBRARY=$(brew --prefix tcl-tk)/lib" >> $GITHUB_ENV
-
-      - name: Install system dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tcl tk libtcl8.6 libtk8.6
 
       - name: Set up R ${{ matrix.r-version }}
         uses: r-lib/actions/setup-r@v2
