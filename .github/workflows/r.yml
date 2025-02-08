@@ -17,9 +17,6 @@ on:
 permissions:
   contents: read
 
-jobs
-
-```yaml
 jobs:
   build:
     runs-on: ${{ matrix.os }}
