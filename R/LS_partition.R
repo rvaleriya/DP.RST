@@ -20,7 +20,7 @@ LS_partition <- function(DP.RST_output) {
   teams_assign = DP.RST_output$teams_out
   teams_number = DP.RST_output$j_teams_out
 
-  n = length(groups_assign)
+  n = ncol(groups_assign)
 
   # List to save co-clustering matrices
   W_cum <- matrix(0, nrow = n, ncol = n)
