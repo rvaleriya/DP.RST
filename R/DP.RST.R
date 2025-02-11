@@ -33,7 +33,6 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #' @param THIN Thinning interval (retains samples every `THIN` iterations).
 #' @param PT Logical; whether to use Parallel Tempering.
 #' @param seed Random seed.
-#' @param backup_d Directory to save regular backup outputs.
 #'
 #' @returns A list of MCMC samples:
 #'         \describe{
@@ -50,7 +49,7 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #' @export
 DP.RST <- function(Y, graph0, init_val, hyperpar,
                    MCMC, BURNIN, THIN,
-                   PT = TRUE, seed = 1234, backup_d) {
+                   PT = TRUE, seed = 1234) {
 
   set.seed(seed) # Set seed for reproducibility
 
@@ -119,26 +118,8 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
   j_teams_out = numeric((MCMC-BURNIN)/THIN) # To store the number of clusters for refined partition
   moves_track_out = numeric((MCMC-BURNIN)/THIN) # To track accepted moves
 
-  # Initialize backup lists for saving data periodically
-  backup_list_cluster = list()
-  backup_list_teams = list()
-  backup_list_tree = list()
-  backup_list_k = list()
-  backup_list_j_teams = list()
-  backup_list_marg_likl = list()
-  backup_list_mu = list()
-  backup_list_mu_teams = list()
-  backup_list_sigmasq_y = list()
-  backup_list_subgraphs = list()
-  backup_list_csize = list()
-  backup_list_eid_btw_mst = list()
-  backup_list_edge_status = list()
-
   # Matrix for storing marginal likelihood during MCMC iterations
   marginal_likelihood = matrix(0, nrow = MCMC, ncol = M)
-
-  # Counter for saving backup files
-  save_counter = 1
 
   ## Main MCMC iteration loop
   for(iter in 1:MCMC) {
@@ -418,41 +399,6 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
       sigmasq_y_out[[(iter-BURNIN)/THIN]] = sigmasq_y[[length(temp)]]
       #moves_track_out[(iter-BURNIN)/THIN] = moves_track[iter]
     }
-
-    # Save the data for back-up
-    if(iter %% 1000 == 0) {
-      # Use the save_counter for indexing
-      backup_list_cluster[[save_counter]] = cluster
-      backup_list_teams[[save_counter]] = teams
-      backup_list_tree[[save_counter]] = mstgraph_lst
-      #backup_list_k[[save_counter]] = k[length(temp)]
-      backup_list_j_teams[[save_counter]] = j_teams
-      backup_list_marg_likl[[save_counter]] = marginal_likelihood[iter, ]
-      backup_list_mu[[save_counter]] = mu
-      backup_list_mu_teams[[save_counter]] = mu_teams
-      backup_list_sigmasq_y[[save_counter]] = sigmasq_y
-      backup_list_subgraphs[[save_counter]] = subgraphs
-      backup_list_csize[[save_counter]] = csize
-      backup_list_eid_btw_mst[[save_counter]] = eid_btw_mst
-      backup_list_edge_status[[save_counter]] = edge_status
-
-      backup = list('Clusters' = backup_list_cluster,
-                    'Teams' = backup_list_teams,
-                    'Tree' = backup_list_tree,
-                    'Number of teams' = backup_list_j_teams,
-                    'Marg. Likl.' = backup_list_marg_likl,
-                    'Cluster Means' = backup_list_mu,
-                    'Team Means' = backup_list_mu_teams,
-                    'Sigmasq' = backup_list_sigmasq_y,
-                    'Subgraphs' = backup_list_subgraphs,
-                    'Csize' = backup_list_csize,
-                    'Eid_btw_mst' = backup_list_eid_btw_mst,
-                    'Edge_status' = backup_list_edge_status)
-
-      save(backup, file = backup_d)
-
-      save_counter = save_counter + 1 # Increment the save counter
-    } # end of backup loop
 
   } # end of iteration loop
 

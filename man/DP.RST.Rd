@@ -13,8 +13,7 @@ DP.RST(
   BURNIN,
   THIN,
   PT = TRUE,
-  seed = 1234,
-  backup_d
+  seed = 1234
 )
 }
 \arguments{
@@ -52,8 +51,6 @@ DP.RST(
 \item{PT}{Logical; whether to use Parallel Tempering.}
 
 \item{seed}{Random seed.}
-
-\item{backup_d}{Directory to save regular backup outputs.}
 }
 \value{
 A list of MCMC samples:
