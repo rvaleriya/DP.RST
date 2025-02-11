@@ -11,6 +11,8 @@
 #' \item{'w'}{If the edge is **within** a cluster.}
 #' \item{'b'}{If the edge is **between** two clusters.}
 #'
+#' @keywords internal
+#'
 #' @noRd
 .getEdgeStatus <- function(membership, inc_mat) {
   membership_head = membership[inc_mat[, 1]]

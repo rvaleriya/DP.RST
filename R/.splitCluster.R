@@ -15,6 +15,8 @@
 #' \item{clust_old}{The ID of the cluster that was split.}
 #' \item{idx_new}{A logical vector indicating which nodes belong to the new cluster.}
 #'
+#' @keywords internal
+#'
 #' @noRd
 .splitCluster <- function(mstgraph, k, subgraphs, csize) {
   clust_split = sample.int(k, 1, prob = csize - 1)

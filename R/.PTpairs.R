@@ -10,6 +10,8 @@
 #' @returns A list where each element is a numeric vector of length 2,
 #'          representing a valid pair. If no valid pairs exist, returns an empty list.
 #'
+#' @keywords internal
+#'
 #' @noRd
 generate_pairs <- function(vec, diff_threshold = 0.1) {
   # If there are less than 2 elements, no pairs can be made

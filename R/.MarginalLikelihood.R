@@ -12,6 +12,8 @@
 #'
 #' @returns A numeric value representing the log marginal likelihood.
 #'
+#' @keywords internal
+#'
 #' @noRd
 .MarginalLikelihood <- function(Y, cluster_assign, team_assign, k, j, sigmasq_mu, Sigma){
   ### Here we calculate the log marginal likelihood ###

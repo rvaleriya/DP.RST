@@ -20,6 +20,8 @@
 #' \item{eid_btw_mst}{Updated edge list for edges between clusters.}
 #' \item{estatus}{Updated edge status vector.}
 #'
+#' @keywords internal
+#'
 #' @noRd
 .updateMerge <- function(res_merge, subgraphs, csize, eid_btw_mst, cluster,
                         edge_status, adj_list, adj_edge_list, mstgraph) {

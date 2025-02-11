@@ -13,6 +13,8 @@
 #' \item{subgraphs}{A list of updated subgraphs derived from the new MST.}
 #' \item{eid_btw_mst}{A vector of edge IDs in the MST with strong "between' clusters edges.}
 #'
+#' @keywords internal
+#'
 #' @noRd
 .proposeMST <- function(graph0, edge_status, subgraphs) {
   nedge = length(edge_status)

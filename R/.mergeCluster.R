@@ -20,6 +20,8 @@
 #' \item{subgraphs}{Updated list of subgraphs (if `change = TRUE`).}
 #' \item{csize}{Updated cluster sizes (if `change = TRUE`).}
 #'
+#' @keywords internal
+#'
 #' @noRd
 .mergeCluster <- function(mstgraph, eid_btw_mst, subgraphs, csize, cluster,
                           edge_list, change = F) {
