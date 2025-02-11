@@ -9,7 +9,6 @@ DP.RST(
   graph0,
   init_val,
   hyperpar,
-  temp,
   MCMC,
   BURNIN,
   THIN,
@@ -41,9 +40,8 @@ DP.RST(
 \item{\code{nu}}{Degrees of freedom for Inverse-Wishart prior.}
 \item{\code{k_max}}{Maximum number of clusters in spatial partition.}
 \item{\code{j_max}}{Maximum number of clusters in refined partition.}
+\item{\code{temp}}{A vector of temperatures of size M for Parallel Tempering.}
 }}
-
-\item{temp}{A vector of temperatures of size M for Parallel Tempering.}
 
 \item{MCMC}{Number of MCMC iterations.}
 

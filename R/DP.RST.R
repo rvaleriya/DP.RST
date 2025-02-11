@@ -26,8 +26,8 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #'          \item{`nu`}{Degrees of freedom for Inverse-Wishart prior.}
 #'          \item{`k_max`}{Maximum number of clusters in spatial partition.}
 #'          \item{`j_max`}{Maximum number of clusters in refined partition.}
+#'          \item{`temp`}{A vector of temperatures of size M for Parallel Tempering.}
 #'        }
-#' @param temp A vector of temperatures of size M for Parallel Tempering.
 #' @param MCMC Number of MCMC iterations.
 #' @param BURNIN Number of burn-in iterations.
 #' @param THIN Thinning interval (retains samples every `THIN` iterations).
@@ -48,7 +48,7 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #'          \item{`marginal_likelihood_out`}{Vector of marginal likelihood values.}
 #'         }
 #' @export
-DP.RST <- function(Y, graph0, init_val, hyperpar, temp,
+DP.RST <- function(Y, graph0, init_val, hyperpar,
                    MCMC, BURNIN, THIN,
                    PT = TRUE, seed = 1234, backup_d) {
 
@@ -57,15 +57,12 @@ DP.RST <- function(Y, graph0, init_val, hyperpar, temp,
   n = vcount(graph0)  # Number of vertices (observations)
   p = ncol(Y)  # Number of response variables (features)
 
-  # Extract hyperparameters
-  temp = temp # Temperatures
-  M = hyperpar['M']$M  # Number of temperatures
-  sigmasq_mu = hyperpar['sigmasq_mu']$sigmasq_mu # Prior variance for mu
-  lambda_s = hyperpar['lambda_s']$lambda_s # Scale parameter for Inverse-Wishart prior
-  nu = hyperpar['nu']$nu # Degrees of freedom for Inverse-Wishart prior
-  k_max = hyperpar['k_max']$k_max # Maximum number of clusters for crude spatial partition
-  alpha = hyperpar['alpha']$alpha # DPM concentration parameter
+  ### Extract hyperparameters and initial values
+  sigmasq_mu <- lambda_s <- nu <- M <- temp <- k_max <- j_max <- alpha <- NULL  # Declare variables
+  list2env(hyperpar, envir = environment())  # Load hyperparameters
 
+  mstgraph_lst <- mu <- cluster <- teams <- mu_teams <- sigmasq_y <- NULL # Declare variables
+  list2env(init_val, envir = environment()) # Load initial values
 
   # Delete vertex names if they exist
   if('name' %in% names(vertex_attr(graph0))) {
@@ -75,14 +72,6 @@ DP.RST <- function(Y, graph0, init_val, hyperpar, temp,
   adj_list = lapply(as_adj_list(graph0), FUN = function(x) {x$vid}) # Get adjacency list
   adj_edge_list = lapply(as_adj_edge_list(graph0), FUN = function(x) {x$eid}) # Get adjacency edge list
 
-
-  # Extract initial values for MCMC
-  mstgraph_lst = init_val[['trees']] # Initial spanning trees
-  mu = init_val[['mu']] # Initial crude spatial cluster means
-  mu_teams = init_val[['mu_teams']] # Initial refined cluster means
-  cluster = init_val[['cluster']]  # n*M crude spatial assignments matrix
-  teams = init_val[['teams']] # k*M refined assignments matrix
-  sigmasq_y = init_val[['sigmasq_y']] # Initial noise variance
   k = as.numeric(apply(cluster, 2, max))  # Number of clusters for the crude spatial partition
   j_teams = rep(max(teams), times = M) # Number of clusters for the refined partition
 
