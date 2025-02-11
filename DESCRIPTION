@@ -7,6 +7,7 @@ Description: What the package does (one paragraph).
 License: GPL (>= 3)
 Encoding: UTF-8
 Imports:
-    fdaPDE, igraph, ggplot2
+    fdaPDE, igraph, ggplot2, stats, MCMCpack, Rfast, dplyr, extraDistr, 
+    matrixNormal, mvtnorm, MASS
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
