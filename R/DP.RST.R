@@ -339,7 +339,7 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
       mu_out[[(iter-BURNIN)/THIN]] = mu[[length(temp)]]
       mu_teams_out[[(iter-BURNIN)/THIN]] = mu_teams[[length(temp)]]
       sigmasq_y_out[[(iter-BURNIN)/THIN]] = sigmasq_y[[length(temp)]]
-      #moves_track_out[(iter-BURNIN)/THIN] = moves_track[iter]
+      moves_track_out[(iter-BURNIN)/THIN] = moves_track[iter]
     }
 
   } # end of iteration loop
@@ -348,7 +348,8 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
   mode(cluster_out) = 'integer'  # to save memory
 
   # Return the final MCMC results
-  return(list('cluster_out' = cluster_out, # Posterior samples of cluster assignments
+  return(list('init_val' = init_val, 'hyperpar' = hyperpar,
+              'cluster_out' = cluster_out, # Posterior samples of cluster assignments
               'teams_out' = teams_out, # Posterior samples of refined partition (team) assignments
               'tree_out' = tree_out, # Spanning trees for each temperature for each partition
               'k_out' = k_out, # Number of clusters in the spatial partition for each posterior sample
@@ -356,5 +357,6 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
               'marginal_likelihood_out' = marginal_likelihood_out, # Marginal likelihood values
               'mu_out' = mu_out,# Posterior samples of the means (mu) for clusters in the spatial partition
               'mu_teams_out' = mu_teams_out, # Posterior samples of the means (mu) for clusters in the refined partition
-              'sigmasq_y_out' = sigmasq_y_out)) # Posterior samples of the noise variance))
+              'sigmasq_y_out' = sigmasq_y_out,
+              'moves_track_out' = moves_track_out)) # Posterior samples of the noise variance))
 }
