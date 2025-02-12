@@ -247,12 +247,12 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
           beta_means <- B_var %*% (group_var_inv %*% ginv(group_var_inv + ginv(delta_star)) %*% ginv(delta_star) %*% theta_star)
 
           # Log probability for joining existing teams
-          prob.existing.table[j] = log(n_j[j]) + dmvnorm(mu.k, mean = beta_means, sigma = B_var, log = TRUE)
+          prob.existing.table[j] = log(n_j[j]) + dmvnorm(mu.k, mu = beta_means, sigma = B_var, logged = TRUE)
         }
 
         B_var_new = ginv(group_var_inv - group_var_inv %*% ginv(group_var_inv + ginv(sigmasq_y_m)) %*% group_var_inv)
         # Log probability for starting a new team
-        prob.new.table = log(alpha) + dmvnorm(mu.k, mean = rep(0, p), sigma = B_var_new, log = TRUE)
+        prob.new.table = log(alpha) + dmvnorm(mu.k, mu = rep(0, p), sigma = B_var_new, logged = TRUE)
 
         # Calculate the unnormalized probabilities of occupying the existing J.current tables and opening a new table
         probability.unnormalized = c(prob.existing.table, prob.new.table)
