@@ -9,8 +9,6 @@
 #'
 #' @returns An undirected graph (`igraph` object) where nodes represent mesh points and edges represent valid triangulation connections.
 #' @export
-#'
-#' @examples
 constrainedDentri <- function(n, mesh, threshold = 5000) {
   coords = mesh$nodes[1:n, ]
 
