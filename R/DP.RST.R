@@ -194,9 +194,9 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
           update_res = update_res_check_split
 
           subgraphs[[m]] = update_res$subgraphs # Update subgraphs
-          csize[[m]] = update_res$csize # Update cluster sizes
+          csize[[m]] <- update_res$csize # Update cluster sizes
           eid_btw_mst[[m]] = update_res$eid_btw_mst # Update edges between clusters
-          cluster[, m] = update_res$cluster # Update cluster assignments
+          cluster_m <- cluster[, m] <- update_res$cluster # Update cluster assignments
           edge_status[, m] = update_res$estatus # Update edge status
           marginal_likelihood[iter, m] = marginal_likelihood_new # Update marginal likelihood
         }
@@ -204,81 +204,12 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
 
 
       ### Perform DPM algoirithm
-      for(ind in 1:k[m]){
-        # Remove the k-th group from the groups means (clusters of observations)
-        mu.subset = mu[[m]][-ind,]
-
-        if (!is.matrix(mu.subset)) {
-          mu.subset = matrix(mu.subset, ncol = p)
-        }
-
-        # The mean of the removed group (p-dimensional vector)
-        mu.k = matrix(mu[[m]][ind,], ncol = p)
-        # Remove the k-th group assignment from the team indicator
-        team_assign.subset = teams_m[-ind]
-        # We need to rank the observations again to check if by deleting the i^th indivdual any team gets empty or not
-        team_assign.subset = dense_rank(team_assign.subset)
-        # Update Z matrix
-        Z.subset <- table(sequence(length(team_assign.subset)), team_assign.subset)
-
-        # Check what is the maximum number of occupied tables
-        J.current = max(team_assign.subset)
-
-        # Initialize the storing values
-        n_j = 0; prob.existing.table = c()
-
-        sigmasq_y_m_inv <- chol2inv(chol(sigmasq_y_m))
-        group_var_inv = (1/sigmasq_mu) * sigmasq_y_m_inv
-
-        # Calculate team specific statistics
-        for(j in 1:J.current){
-          # Calculate number of groups in each team
-          n_j[j] = sum(team_assign.subset == j)
-
-          mu.subset.j = mu.subset[which(Z.subset[, j] == 1), ]
-          # Make sure that mu.subset.j is matrix
-          if (!is.matrix(mu.subset.j)) {
-            mu.subset.j = matrix(mu.subset.j, ncol = p)
-          }
-
-          # Calculate the terms to find the density value
-          delta_star_inv <- sigmasq_y_m_inv + n_j[j] * group_var_inv
-          inter_mat <- chol2inv(chol(group_var_inv + delta_star_inv))
-
-          theta_star <- chol2inv(chol(delta_star_inv)) %*% (n_j[j] * group_var_inv %*% colMeans(mu.subset.j))
-          B_var = chol2inv(chol(group_var_inv - group_var_inv %*% inter_mat %*% group_var_inv))
-          beta_means <- B_var %*% (group_var_inv %*% inter_mat %*% delta_star_inv %*% theta_star)
-
-          # Log probability for joining existing teams
-          prob.existing.table[j] = log(n_j[j]) + dmvnorm(mu.k, mu = beta_means, sigma = B_var, logged = TRUE)
-        }
-
-        B_var_new = (1+sigmasq_mu) * sigmasq_y_m
-        # Log probability for starting a new team
-        prob.new.table = log(alpha) + dmvnorm(mu.k, mu = rep(0, p), sigma = B_var_new, logged = TRUE)
-
-        # Calculate the unnormalized probabilities of occupying the existing J.current tables and opening a new table
-        probability.unnormalized = c(prob.existing.table, prob.new.table)
-        # Apply the log-sum exponential trick to stablize numerical computation
-        probability.unnormalized = exp(probability.unnormalized  - max(probability.unnormalized))
-        # Calculate the probability
-        probability = probability.unnormalized/sum(probability.unnormalized)
-        # Draw a categorcal randm variable with probability proportional to that calculated
-        # The i^th table in the original assignment of the table is re-assigned the drawn value
-        teams_m_cat = rcat(n = 1, prob = probability)
-        teams_m = append(team_assign.subset, teams_m_cat, after = (ind-1))
-        # We need to rank the observations again to check if by deleting the i^th indivdual any table gets empty or not
-        teams_m = dense_rank(teams_m)
-        j_teams[m] = max(teams_m)
-      } # end of DPM loop
+      DPM_partition <- .DPM_update(mu[[m]], teams_m, sigmasq_y_m, sigmasq_mu, alpha)
 
       # Update variables
-      teams[, m] = teams_m
-      k_m = k[m]
-      cluster_m = cluster[, m]
-      csize_m = csize[[m]]
+      teams[, m] <- DPM_partition$teams_m
+      j_teams_m <- j_teams[m] <- DPM_partition$j_teams_m
       mu_teams_m = mu_teams[[m]]
-      j_teams_m = j_teams[m]
 
       ## Update mu_teams (team means for refined partition)
       Z <- table(sequence(length(teams[, m])), teams[, m]) # Refined partition binary assignments matrix
