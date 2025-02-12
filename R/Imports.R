@@ -7,5 +7,5 @@
 #' @importFrom matrixNormal rmatnorm
 #' @importFrom MCMCpack riwish
 #' @importFrom Rfast Table dmvnorm
-#' @importFrom MASS ginv
+#' @importFrom Matrix chol2inv chol crossprod solve tcrossprod
 NULL

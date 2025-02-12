@@ -227,7 +227,8 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
         # Initialize the storing values
         n_j = 0; prob.existing.table = c()
 
-        group_var_inv = (1/sigmasq_mu) * ginv(sigmasq_y_m)
+        sigmasq_y_m_inv <- chol2inv(chol(sigmasq_y_m))
+        group_var_inv = (1/sigmasq_mu) * sigmasq_y_m_inv
 
         # Calculate team specific statistics
         for(j in 1:J.current){
@@ -241,16 +242,18 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
           }
 
           # Calculate the terms to find the density value
-          delta_star <- ginv(ginv(sigmasq_y_m) + n_j[j] * group_var_inv)
-          theta_star <- delta_star %*% (n_j[j] * group_var_inv %*% colMeans(mu.subset.j))
-          B_var = ginv(group_var_inv - group_var_inv %*% ginv(group_var_inv + ginv(delta_star)) %*% group_var_inv)
-          beta_means <- B_var %*% (group_var_inv %*% ginv(group_var_inv + ginv(delta_star)) %*% ginv(delta_star) %*% theta_star)
+          delta_star_inv <- sigmasq_y_m_inv + n_j[j] * group_var_inv
+          inter_mat <- chol2inv(chol(group_var_inv + delta_star_inv))
+
+          theta_star <- chol2inv(chol(delta_star_inv)) %*% (n_j[j] * group_var_inv %*% colMeans(mu.subset.j))
+          B_var = chol2inv(chol(group_var_inv - group_var_inv %*% inter_mat %*% group_var_inv))
+          beta_means <- B_var %*% (group_var_inv %*% inter_mat %*% delta_star_inv %*% theta_star)
 
           # Log probability for joining existing teams
           prob.existing.table[j] = log(n_j[j]) + dmvnorm(mu.k, mu = beta_means, sigma = B_var, logged = TRUE)
         }
 
-        B_var_new = ginv(group_var_inv - group_var_inv %*% ginv(group_var_inv + ginv(sigmasq_y_m)) %*% group_var_inv)
+        B_var_new = (1+sigmasq_mu) * sigmasq_y_m
         # Log probability for starting a new team
         prob.new.table = log(alpha) + dmvnorm(mu.k, mu = rep(0, p), sigma = B_var_new, logged = TRUE)
 
@@ -279,26 +282,34 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
 
       ## Update mu_teams (team means for refined partition)
       Z <- table(sequence(length(teams[, m])), teams[, m]) # Refined partition binary assignments matrix
+
       Delta = t(Z) %*% Z + sigmasq_mu * diag(1, j_teams_m)
-      mu_teams[[m]] <- rmatnorm(M = ginv(Delta) %*% t(Z) %*% mu[[m]],
-                                              U = ginv(Delta),
-                                              V = sigmasq_mu*sigmasq_y_m)
+      Delta_inv <- chol2inv(chol(Delta))
+
+      mu_teams[[m]] <- rmatnorm(M = Delta_inv %*% crossprod(Z, mu[[m]]),
+                                              U = Delta_inv,
+                                              V = sigmasq_mu * sigmasq_y_m)
+
+
 
       ## Update mu (group means for spatial partition)
       X <- table(sequence(length(cluster_m)), cluster_m)
-      omega = sigmasq_mu * t(X) %*% X + diag(1, k_m)
-      mu[[m]] <- rmatnorm(M = ginv(omega) %*% (sigmasq_mu*t(X) %*% Y + Z %*% mu_teams[[m]]),
-                                        U = ginv(omega),
-                                        V = sigmasq_mu*sigmasq_y_m)
+      omega = sigmasq_mu * crossprod(X) + diag(1, k_m)
+      omega_inv <- chol2inv(chol(omega))
+
+      mu[[m]] <- rmatnorm(M = omega_inv %*% (sigmasq_mu * crossprod(X, Y) + Z %*% mu_teams[[m]]),
+                                        U = omega_inv,
+                                        V = sigmasq_mu * sigmasq_y_m)
 
 
       ## Update Sigma
       Y_hat = X %*% mu[[m]]
       mu_hat = Z %*% mu_teams[[m]]
+
       sigmasq_y[[m]] = riwish(v = nu + n + k_m + j_teams_m,
-                                        S = lambda_s + t((Y - Y_hat)) %*% (Y - Y_hat) +
-                                          1/sigmasq_mu * t(mu[[m]] - mu_hat) %*% (mu[[m]] - mu_hat) +
-                                          t(mu_teams[[m]]) %*% mu_teams[[m]])
+                              S = lambda_s + crossprod(Y - Y_hat) +
+                                1/sigmasq_mu * crossprod(mu[[m]] - mu_hat) +
+                                crossprod(mu_teams[[m]]))
 
     } # end of M loop
 
