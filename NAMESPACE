@@ -2,6 +2,7 @@
 
 export(DP.RST)
 export(LS_partition)
+export(compute_MST_spatial)
 export(constrainedDentri)
 export(gen2dMesh)
 export(geom_boundary)
