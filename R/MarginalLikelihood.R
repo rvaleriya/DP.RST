@@ -20,24 +20,34 @@
   n = nrow(Y)
   p = ncol(Y)
 
-  # Create a binary matrix from the cluster assignments
-  X <- table(sequence(length(cluster_assign)), cluster_assign)
-  # Create a binary matrix from the teams assignments
-  Z <- table(sequence(length(team_assign)), team_assign)
+  # Build one-hot matrices:
+  # X: n x k, each row (observation) assigned to one cluster.
+  X <- table(seq_along(cluster_assign), cluster_assign)
 
-  # Calculate terms of the marginal log-likelihood
-  omega = crossprod(Z, Z) + sigmasq_mu * diag(1, nrow = j)
-  omega_inv = solve(omega)
+  # Z: k x j, each cluster assigned to one team.
+  Z <- table(seq_along(team_assign), team_assign)
+
+  # omega = crossprod(Z, Z) + sigmasq_mu * diag(1, nrow = j)
+  # omega_inv = solve(omega)
+  # log_det_omega <- sum(log(diag(omega)))
+
+  omega_diag <- colSums(Z) + sigmasq_mu
+  omega_inv <- diag(1 / omega_diag, nrow = length(omega_diag))
+  log_det_omega <- sum(log(omega_diag))
 
   delta = (1/sigmasq_mu) * diag(1, nrow = k) + crossprod(X, X) - (1/sigmasq_mu) * Z %*% tcrossprod(omega_inv, Z)
-  delta_inv = solve(delta)
+  chol_delta <- chol(delta)
+  log_det_delta <- 2 * sum(log(diag(chol_delta)))
+  delta_inv <- chol2inv(chol_delta)
 
-  Sigma_inv = solve(Sigma)
+  chol_Sigma <- chol(Sigma)
+  Sigma_inv = chol2inv(chol_Sigma)
+  log_det_Sigma <- 2 * sum(log(diag(chol_Sigma)))
 
   exp_term = -(1/2) * sum(diag(tcrossprod(Sigma_inv, Y) %*% (diag(1, nrow = n) - X %*% tcrossprod(delta_inv,X)) %*% Y))
 
-  marg_like <- -(n*p/2)*log(2*pi) + (p*(j-k)/2)*log(sigmasq_mu) - (n/2)*log(det(Sigma)) -
-    (p/2)*log(det(omega)) - (p/2) * log(det(delta)) + exp_term
+  marg_like <- -(n*p/2)*log(2*pi) + (p*(j-k)/2)*log(sigmasq_mu) - (n/2)*log_det_Sigma -
+    (p/2)*log_det_omega - (p/2) * log_det_delta + exp_term
 
   return(marg_like)
 }
