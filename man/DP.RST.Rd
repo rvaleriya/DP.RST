@@ -13,6 +13,7 @@ DP.RST(
   BURNIN,
   THIN,
   PT = TRUE,
+  PT_diff = 0.1,
   seed = 1234
 )
 }
@@ -49,6 +50,9 @@ DP.RST(
 \item{THIN}{Thinning interval (retains samples every \code{THIN} iterations).}
 
 \item{PT}{Logical; whether to use Parallel Tempering.}
+
+\item{PT_diff}{A numeric value specifying the maximum absolute
+difference allowed between paired values. Default is \code{0.1}.}
 
 \item{seed}{Random seed.}
 }

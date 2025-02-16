@@ -3,9 +3,9 @@
 #' This function randomly selects pairs of values from a vector where
 #' the absolute difference between paired values is within a given threshold.
 #'
-#' @param vec A numeric vector of values from which pairs will be generated.
+#' @param vec A numeric vector of temperatures from which pairs will be generated.
 #' @param diff_threshold A numeric value specifying the maximum absolute
-#'        difference allowed between paired values. Default is `0.1`.
+#'        difference allowed between paired values.
 #'
 #' @returns A list where each element is a numeric vector of length 2,
 #'          representing a valid pair. If no valid pairs exist, returns an empty list.
@@ -13,7 +13,7 @@
 #' @keywords internal
 #'
 #' @noRd
-generate_pairs <- function(vec, diff_threshold = 0.1) {
+.generate_pairs <- function(vec, diff_threshold) {
   # If there are less than 2 elements, no pairs can be made
   if (length(vec) < 2) stop("Vector length must be at least 2.")
 

@@ -32,6 +32,8 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #' @param BURNIN Number of burn-in iterations.
 #' @param THIN Thinning interval (retains samples every `THIN` iterations).
 #' @param PT Logical; whether to use Parallel Tempering.
+#' @param PT_diff A numeric value specifying the maximum absolute
+#'        difference allowed between paired values. Default is `0.1`.
 #' @param seed Random seed.
 #'
 #' @returns A list of MCMC samples:
@@ -49,7 +51,7 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #' @export
 DP.RST <- function(Y, graph0, init_val, hyperpar,
                    MCMC, BURNIN, THIN,
-                   PT = TRUE, seed = 1234) {
+                   PT = TRUE, PT_diff = 0.1, seed = 1234) {
 
   set.seed(seed) # Set seed for reproducibility
 
@@ -255,7 +257,7 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
       if (iter %% 10 == 0) {
 
         # Generate pairs of temperatures
-        pairs <- generate_pairs(temp, diff_threshold = 0.1)
+        pairs <- .generate_pairs(temp, PT_diff)
 
         # Compare the posterior distribution of the pairs of chains
         for (j in 1:length(pairs)) {
