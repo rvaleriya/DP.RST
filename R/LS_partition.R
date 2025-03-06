@@ -12,7 +12,7 @@
 #'   \item{`teams_partition`}{Vector of refined team assignments for the optimal iteration.}
 #' }
 #'
-#' @export
+#' @noRd
 LS_partition <- function(DP.RST_output) {
 
   ##### CHOOSE THE ITERATION #####
