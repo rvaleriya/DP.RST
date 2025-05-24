@@ -11,7 +11,7 @@ utils::globalVariables(c(".getEdgeStatus", ".proposeMST", ".MarginalLikelihood",
 #' @param graph0 Spatial graph. Should be an `igraph` object containing `length(Y)` vertices.
 #' @param init_val Named list of initial values containing:
 #'        \describe{
-#'          \item{`trees`}{List of initial spanning trees (M `igraph` objects).}
+#'          \item{`mstgraph_lst`}{List of initial spanning trees (M `igraph` objects).}
 #'          \item{`cluster`}{Initial cluster membership matrix (`length(Y) * M`).}
 #'          \item{`mu`}{List of initial cluster means.}
 #'          \item{`teams`}{Initial refined partition matrix (`length(Y) * M`).}

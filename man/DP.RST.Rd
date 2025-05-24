@@ -24,7 +24,7 @@ DP.RST(
 
 \item{init_val}{Named list of initial values containing:
 \describe{
-\item{\code{trees}}{List of initial spanning trees (M \code{igraph} objects).}
+\item{\code{mstgraph_lst}}{List of initial spanning trees (M \code{igraph} objects).}
 \item{\code{cluster}}{Initial cluster membership matrix (\code{length(Y) * M}).}
 \item{\code{mu}}{List of initial cluster means.}
 \item{\code{teams}}{Initial refined partition matrix (\code{length(Y) * M}).}
