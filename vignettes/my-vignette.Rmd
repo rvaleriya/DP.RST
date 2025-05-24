@@ -1,0 +1,622 @@
+---
+title: "Implementation of the Dirichlet Process Mixture of Random Spanning Trees (DP-RST) on the Toy example"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{my-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+library(DP.RST)
+library(igraph)
+library(MASS)
+library(mclust)
+library(sp)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+```
+
+```{r}
+# Set seed
+set.seed(6392)
+```
+
+# Swiss-Roll Data Generation 
+
+## Generate spatial coordinates and the boundary
+
+In this section, we will generate the coordinates of spots/cells within the non-convex boundary of a Swiss-Roll shape. First, we will write a custom function to generate the spiral boundary and coordinates:
+
+```{r}
+# ---------------------------------------------------------------------------
+#  generate_spiral_boundary()
+#  Construct a Swiss-roll–style double spiral, return: 
+#    • coords   – grid points strictly inside the spiral, not on the wall
+#    • boundary – ordered (x, y) vertices of the closed poly-line boundary
+#  Arguments
+#    num_rolls          how many full turns the outer spiral makes
+#    width              constant radial gap between outer & inner spirals
+#    connection_length  number of initial vertices to drop from the inner 
+#                           spiral so the two traces meet smoothly
+#    dist_from_bnd      the points of coordinates from the boundary
+#    grid               spacing of the square sampling grid
+# ---------------------------------------------------------------------------
+generate_spiral_boundary <- function(num_rolls, width = 2, connection_length = 190,
+                                     dist_from_bnd = 0.15, grid = 0.8) {
+
+  ## Build outer / inner spiral coordinates 
+  # Parameterise angle θ for the outer spiral: 0 → num_rolls·2π
+  theta_outer <- seq(0, num_rolls * 2 * pi, length.out = 2000)
+
+  # Radius grows linearly with θ (Archimedean spiral). 1 is start radius;
+  # 0.5 is radial gain per radian – tweak if you need tighter turns.
+  r_outer <- 1 + 0.5 * theta_outer
+
+  # Convert polar → Cartesian
+  x_boundary_outer <- r_outer * cos(theta_outer)
+  y_boundary_outer <- r_outer * sin(theta_outer)
+
+  # Inner spiral is simply outer radius minus fixed width
+  r_inner          <- r_outer - width
+  x_boundary_inner <- r_inner * cos(theta_outer)
+  y_boundary_inner <- r_inner * sin(theta_outer)
+
+  # Trim the first `connection_length` inner points so the inner trace
+  # begins where the outer trace ends, giving one continuous polyline.
+  x_boundary_inner_smooth <- x_boundary_inner[-(1:connection_length)]
+  y_boundary_inner_smooth <- y_boundary_inner[-(1:connection_length)]
+
+  # Stitch outer spiral with reversed (clockwise) inner spiral → simple ring
+  boundary <- data.frame(
+    x = c(x_boundary_outer, rev(x_boundary_inner_smooth)),
+    y = c(y_boundary_outer, rev(y_boundary_inner_smooth))
+  )
+  boundary <- rbind(boundary, boundary[1, ])   # repeat first vertex to close
+
+  ## 2.  Helper functions ------------------------------------------------------
+  # 2a. Point-in-polygon: classic sp / rgeos approach
+  is_inside <- function(x, y, boundary) {
+    boundary_sp <- SpatialPolygons(
+      list(Polygons(list(Polygon(boundary)), "boundary"))
+    )
+    pts_sp <- SpatialPoints(data.frame(x, y))
+    !is.na(over(pts_sp, boundary_sp))   # TRUE  ⇢  inside
+  }
+
+  # 2b. Distance to boundary
+  is_on_boundary <- function(x, y, boundary, dist_thresh) {
+    # Convert boundary to single LINESTRING (no CRS needed for Euclidean calc)
+    boundary_ln <- st_sfc(st_linestring(as.matrix(boundary)),
+                              crs = NA_crs_)
+    # Candidate points → sf POINT collection
+    pts_sf <- st_as_sf(data.frame(x, y), coords = c("x", "y"),
+                           crs = NA_crs_)
+    # Vectorised distance; coerce to numeric from “units”
+    as.numeric(st_distance(pts_sf, boundary_ln)) < dist_thresh
+  }
+
+  ## 3.  Generate regular grid & retain only interior points -------------------
+  # Grid spanning the spiral’s bounding box
+  x_range     <- seq(floor(min(boundary$x)), ceiling(max(boundary$x)), by = grid)
+  y_range     <- seq(floor(min(boundary$y)), ceiling(max(boundary$y)), by = grid)
+  grid_points <- expand.grid(x = x_range, y = y_range)
+
+  # Keep points inside polygon
+  inside      <- is_inside(grid_points$x, grid_points$y, boundary)
+  coords      <- grid_points[inside, ]
+
+  # Drop points closer than dist_from_bnd to the spiral wall
+  on_boundary <- is_on_boundary(coords$x, coords$y, boundary, dist_from_bnd)
+  coords      <- coords[!on_boundary, ]
+
+  ## 4.  Return ---------------------------------------------------------------
+  list(coords = coords, boundary = boundary)
+}
+```
+
+
+We then call the function with a set of parameters that define the characteristics of the spiral, such as the number of spirals, the width between the inner and outer spirals, and the density of grid points within the boundary.
+
+For detailed information on the boundary generation process, please refer to **Supplementary Materials C**.
+
+```{r}
+sim_data <- generate_spiral_boundary(num_rolls = 2, width = 2, 
+                                     connection_length = 190,
+                                     dist_from_bnd = 0.15, grid = 0.8)
+```
+
+The function returns a list with two components:
+
+	•	coords: A data frame with the x and y coordinates of the generated spots.
+	•	boundary: A data frame with the coordinates of the spiral boundary.
+
+
+```{r}
+head(sim_data$coords)
+```
+
+```{r, warning=FALSE, echo = FALSE, fig.width=4, fig.height=3, fig.align='center'}
+# Plot the boundary and generated points as coordinates
+coords_plot <- ggplot() +
+  geom_path(data = sim_data$boundary, aes(x = x, y = y), color = 'navyblue') +
+  geom_point(data = sim_data$coords, aes(x = x, y = y)) +
+  labs(x = 'Coordinate X', y = 'Coordinate Y', color = 'Cluster') +
+  theme(
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_line(color = "black"),
+    axis.line = element_line(colour = "black", size = 0.5,
+                             arrow = arrow(type = "closed", 
+                                           length = unit(0.08, "inches")))
+  )
+
+coords_plot
+```
+
+## Create cluster assignments
+
+To create cluster assignments, we first determine the spiral segment each point belongs to by calculating its angle relative to the origin of the Swiss Roll. Then, we apply $k-means$ clustering within each spiral segment, grouping the points into three clusters based on their $x$ and $y$ coordinates.
+
+```{r}
+# Determine the roll each point belongs to based on angle
+sim_data$coords <- sim_data$coords %>%
+  mutate(angle = atan2(y, x),
+         roll_segment = cut(angle, breaks = seq(-pi, pi, length.out = 3), labels = 1:2))
+
+# Apply k-means clustering within each roll segment
+sim_data$coords <- sim_data$coords %>%
+  group_by(roll_segment) %>%
+  mutate(cluster = kmeans(cbind(x, y), centers = 3)$cluster)
+
+# Ungroup the data
+sim_data$coords <- sim_data$coords %>%
+  ungroup()
+# Remove unnecessary columns
+sim_data$coords <- sim_data$coords %>% 
+  select(-angle)
+sim_data$coords <- sim_data$coords %>% 
+  select(-roll_segment)
+```
+
+```{r, warning=FALSE, echo = FALSE, fig.width=5, fig.height=3, fig.align='center'}
+# Plot the boundary and generated points as coordinates
+points_plot <- ggplot() +
+  geom_path(data = sim_data$boundary, aes(x = x, y = y), color = 'navyblue') +
+  geom_point(data = sim_data$coords, aes(x = x, y = y, color = factor(cluster)), 
+             size = 3) +
+  labs(x = 'Coordinate X', y = 'Coordinate Y', color = 'Cluster') +
+  theme(
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_line(color = "black"),
+    axis.line = element_line(colour = "black", size = 0.5,
+                             arrow = arrow(type = "closed", 
+                                           length = unit(0.08, "inches")))
+  )
+points_plot
+```
+
+## Generating data for each cluster
+
+Finally, we generate data for each cell-type cluster from a multivariate normal distribution with means (-5, 0, 5) and a shared identity covariance matrix, ensuring equal variance and no correlation between dimensions across clusters.
+
+
+```{r}
+# Define the means for each cluster's normal distribution
+cluster_means <- seq(from = -5, to = 5, length.out = 3)
+p = 3
+
+# Initialize a vector to store generated Y values
+Y <- matrix(0, nrow = nrow(sim_data$coords), ncol = p)
+
+# Generate Y data from a normal distribution for each cluster
+for (cluster_id in unique(sim_data$coords$cluster)) {
+  cluster_indices <- which(sim_data$coords$cluster == cluster_id)
+  n_clust = length(cluster_indices)
+  
+  Y[cluster_indices, ] <- mvrnorm(n = n_clust, 
+                                  mu = rep(cluster_means[as.numeric(cluster_id)], p), 
+                                  Sigma = diag(1, p))
+}
+```
+
+```{r}
+# Combine generated Y values with the coordinates in sim_data
+sim_data$coords <- cbind(sim_data$coords, Y)
+
+# Rename the last three columns to Y1, Y2, and Y3
+colnames(sim_data$coords)[(ncol(sim_data$coords)-2):ncol(sim_data$coords)] <- 
+  c("Y1", "Y2", "Y3")
+
+# Display the first few rows of the updated data frame
+head(sim_data$coords)
+```
+
+Now, visualize the generated data for each variable:
+
+```{r, echo=FALSE, fig.width=8, fig.height=5}
+plt1 <- ggplot() +
+  geom_path(data = sim_data$boundary, aes(x = x, y = y), color = 'navyblue') +
+  geom_point(aes(x = x, y = y, col = Y1), data = sim_data$coords) +
+  labs(x = 'Coordinate X', y = 'Coordinate Y', colour = "True label") +
+  ggtitle('Y1') +
+  theme(legend.position = "right")
+
+plt2 <- ggplot() +
+  geom_path(data = sim_data$boundary, aes(x = x, y = y), color = 'navyblue') +
+  geom_point(aes(x = x, y = y, col = Y2), data = sim_data$coords) +
+  labs(x = 'Coordinate X', y = 'Coordinate Y', colour = "True label") +
+  ggtitle('Y2') +
+  theme(legend.position = "right")
+
+plt3 <- ggplot() +
+  geom_path(data = sim_data$boundary, aes(x = x, y = y), color = 'navyblue') +
+  geom_point(aes(x = x, y = y, col = Y3), data = sim_data$coords) +
+  labs(x = 'Coordinate X', y = 'Coordinate Y', colour = "True label") +
+  ggtitle('Y3') +
+  theme(legend.position = "right")
+
+ggarrange(plt1, plt2, plt3)
+```
+
+# Implement DP-RST 
+
+## Setup initial values and hyperparameters
+
+Before applying DP-RST to the simulated data, we standardize the generated $Y$ values, spatial coordinates, and the boundary values.
+
+```{r}
+n = nrow(sim_data$coords) # number of observations
+
+# Standardize spatial coordinates and Y values
+coords <- apply(sim_data$coords[, 1:2], 2, scale)
+Y_std <- apply(sim_data$coords[, 4:6], 2, scale)
+
+# Standardize the boundary to match the scaled coordinates
+bnd = list()
+bnd$x <- (sim_data$boundary$x - mean(sim_data$coords$x))/sd(sim_data$coords$x)
+bnd$y <- (sim_data$boundary$y - mean(sim_data$coords$y))/sd(sim_data$coords$y)
+```
+
+We now proceed with setting up the initialization values for DP-RST. First, we generate the graph and the initial Minimum Spanning Tree (MST) based on the standardized coordinates.
+
+More details about Graph, Minimum Spanning Tree, and Spatial Partition can be found in the **Methods** section of the paper. 
+
+```{r}
+mesh = gen2dMesh(coords, bnd) # Get mesh and triangulation
+graph0 = constrainedDentri(n, mesh) # Create a graph based on the mesh
+E(graph0)$eid = c(1:ecount(graph0))  # Assign edge IDs
+V(graph0)$vid = c(1:vcount(graph0))  # Assign vertex IDs
+mstgraph = mst(graph0)  # Create the initial Minimum Spanning Tree (MST)
+graph0 = delete_edge_attr(graph0, 'weight') # Remove edge weights
+mstgraph0 = delete_edge_attr(mstgraph, 'weight') # Remove weights from the MST
+```
+
+Plot the spatial graph and initial MST using the function `plotGraph`:
+
+```{r, warning=FALSE, fig.width=7, fig.height=3, fig.align='center'}
+graph_plot <- plotGraph(coords, graph0) +
+  geom_boundary(bnd, color = 'navyblue') +
+  labs(x = 'Coordinate X', y = 'Coordinate Y') +
+  ggtitle("Spatial Graph") +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_line(color = "black"),
+    axis.line = element_line(colour = "black", size = 0.5,
+                             arrow = arrow(type = "closed", 
+                                           length = unit(0.08, "inches")))
+  )
+
+mst_plot <- plotGraph(coords, mstgraph) +
+  geom_boundary(bnd, color = 'navyblue') +
+  labs(x = 'Coordinate X', y = 'Coordinate Y') +
+  ggtitle("Initial Minimum Spanning Tree") +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_line(color = "black"),
+    axis.line = element_line(colour = "black", size = 0.5,
+                             arrow = arrow(type = "closed", 
+                                           length = unit(0.08, "inches")))
+  )
+
+ggarrange(graph_plot, mst_plot, ncol = 2)
+```
+
+Next, we set the parameters for Parallel Tempering. In this example, we'll run *M = 10* chains, each with a different temperature. Parallel Tempering accelerates convergence by helping the algorithm escape local modes in the posterior distribution.
+
+For more details on Parallel Tempering, refer to **Supplementary Materials A**.
+
+```{r}
+# Define the "temperatures" for parallel tempering
+temp = seq(0.1:1, by = 0.1)
+temp
+
+M = length(temp)
+```
+
+Then, we initialize the cluster memberships for both the crude spatial partition and the refined partition. From this point forward, we’ll refer to clusters in the crude spatial partition as *groups*, and to the refined cell-type clusters as *teams*.
+
+For the crude spatial partition, we apply k-means with 10 centers to the spatial coordinates, using the resulting cluster assignments as our initial clusters for *groups*. In the refined partition, we start with each *group* assigned to a single *team*. These initial values are then replicated across all *M* temperature levels for the Parallel Tempering.
+
+```{r}
+### Initial cluster memberships for crude spatial partition
+
+# Perform k-means clustering on coordinates
+init_assign <- kmeans(sim_data$coords[, 3:6], 10)$cluster 
+# Create a matrix of initial cluster assignments for all M temperatures
+cluster = matrix(rep(init_assign), nrow = n, ncol = M) 
+# Identify unique cluster IDs from the initial assignment
+cluster_ids <- unique(init_assign)
+
+# Set the maximum number of crude spatial clusters
+k_max = length(cluster_ids)
+
+# Initialize a matrix to store the means of each cluster
+cluster_means_matrix <- matrix(0, nrow = length(cluster_ids), ncol = p)
+# Calculate the means of the standardized Y values for each *group*
+for (i in 1:length(cluster_ids)) {
+  cluster_means_matrix[i, ] <- colMeans(Y_std[init_assign == cluster_ids[i], , 
+                                              drop = FALSE])
+}
+```
+
+Let’s visualize the initial assignments of the spots/cells for the crude spatial partition using the custom function `groups_plot`:
+
+```{r, warning=FALSE, fig.width=4, fig.height=3, fig.align='center'}
+groups_plotted <- groups_plot(coords, init_assign, bnd) +
+  ggtitle(paste("Initial Groups, k = ", length(unique(init_assign)), sep = "")) +
+  theme(legend.position = "none")
+groups_plotted
+```
+
+```{r}
+### Initialize all the *groups* as belonging to a single *team* 
+teams = matrix(rep(1, k_max), ncol = M, nrow = k_max, byrow = F)
+```
+
+```{r}
+### Initialize lists for storing parameter values across the M temperatures
+mu = list()             # Mean values for each *group*
+sigmasq_y = list()      # Covariance matrices for Y values
+mstgraph_lst = list()   # Initial spanning trees
+mu_teams = list()       # Mean values for *teams*
+
+# For each temperature, replicate the initial values of clusters, means, 
+# and spanning trees
+for(m in 1:M) {
+  mu[[m]] = cluster_means_matrix
+  mu_teams[[m]] = colMeans(Y_std)
+  sigmasq_y[[m]] = cov(Y_std) 
+  mstgraph_lst[[m]] = mstgraph0
+}
+```
+
+Finally, to consolidate all the initial values, we organize them into a list of lists. This keeps all the starting parameters for DP-RST in one place, making the workflow cleaner and easier to manage.
+
+```{r}
+# Create a list to hold all initial values for DP-RST
+init_val = list()
+init_val[['mstgraph_lst']] = mstgraph_lst
+init_val[['mu']] = mu 
+init_val[['cluster']] = cluster
+init_val[['teams']] = teams
+init_val[['mu_teams']] = mu_teams
+init_val[['sigmasq_y']] = sigmasq_y
+```
+
+Also, we define the necessary hyperparameters:
+
+- `sigmasq_mu`: A fixed small value for the variance of the spatial cluster-specific means.
+
+- `lambda_s`: Scale matrix for the Inverse-Wishart prior, controlling the covariance of clusters.
+
+- `nu`: Degrees of freedom for the Inverse-Wishart prior.
+
+- `M`: The number of chains for Parallel Tempering.
+
+- `k_max`: The maximum number of groups in the spatial partition.
+
+- `j_max`: The maximum number of teams in the refined partition.
+
+- `alpha`: The concentration parameter for the Dirichlet Process Mixture (DPM) model, controlling the probability of assigning new data points to a new or existing group.
+
+- `temp`: A vector of temperatures of size M for Parallel Tempering.
+
+More information about hyperparameters can be found in the **Methods** section of the paper and in the **Supplementary Materials A**.
+
+```{r}
+# Set the hyperparameters for the model
+hyperpar = list()
+hyperpar[['sigmasq_mu']] = 0.3 
+hyperpar[['lambda_s']] = diag(1, p) 
+hyperpar[['nu']] = p
+hyperpar[['M']] = M
+hyperpar[['k_max']] = 10
+hyperpar[['j_max']] = 5
+hyperpar[['alpha']] = 0.1 
+hyperpar[['temp']] = temp
+```
+
+Lastly, we specify the MCMC parameters, including the number of iterations, the burn-in period, and the thinning interval. The burn-in period refers to the initial phase of the MCMC run, during which early samples are discarded as they may not have stabilized and could reflect initial bias. The thinning interval reduces autocorrelation by retaining only every *t*th sample, ensuring more independent samples. 
+
+In this example, we will use a shorter chain for quicker results and will not discard any posterior samples.
+
+```{r}
+### MCMC parameters
+# Number of posterior samples = (MCMC - BURNIN) / THIN
+
+MCMC = 1000     # MCMC iterations
+BURNIN = 0      # Burn-in period length
+THIN = 1        # Thinning intervals
+```
+
+## Run the algorithm
+
+Now, let’s execute the DP-RST algorithm!
+
+This code runs DP-RST on the standardized data (`Y_std`) using the initial values (`init_val`), hyperparameters (`hyperpar`), and the specified MCMC parameters. 
+
+```{r, warning=FALSE}
+SR_sim_test = DP.RST(Y_std, graph0, init_val, hyperpar,
+                     MCMC, BURNIN, THIN, 
+                     PT = TRUE, PT_diff = 0.1, seed = 123)
+```
+
+The output from DP-RST includes the following variables:
+
+- `cluster_out`: A matrix representing the crude spatial cluster assignments. Each row corresponds to the cluster assignments for a specific MCMC iteration, while the columns represent the spots/cells in the data.
+
+- `teams_out`: A list of refined cluster membership vectors for each MCMC iteration, representing the refined partition that identifies cell-type clusters from the crude spatial clusters after the DP-RST process.
+
+- `tree_out`: A list of minimum spanning trees (MSTs) generated for each MCMC iteration.
+
+- `k_out`: A vector that records the number of clusters in the crude spatial partition for each posterior sample obtained during the MCMC run.
+
+- `j_out`: A vector indicating the number of clusters (*teams*) in the refined partition for each posterior sample.
+
+- `mu_out`: A list of posterior samples representing the mean values for the clusters in the crude spatial partition (*groups*).
+
+- `mu_teams_out`: A list of posterior samples representing the mean values for the clusters in the refined partition (*teams*).
+
+- `sigmasq_y_out`: A list of covariance matrices for the Y values, obtained from each MCMC iteration.
+
+- `marginal_likelihood_out`: A vector of marginal likelihood values, reflecting the likelihood of the data given the partition at each MCMC iteration.
+
+## Process DP-RST output
+
+After DP-RST completes, we process the results by selecting the optimal partition using the least squares clustering criterion. This is done with the custom function `partition`- this function selects an optimal partition from the posterior samples of a DP-RST model using various methods to summarize the posterior distribution of partitions. The least squares clustering criterion is specified as `method` = `"mode_based"` and helps identify the partition that best minimizes the overall variance within clusters. Further details on this criterion can be found in **Supplementary Materials A**.
+
+The `partition` function accepts the DP-RST output as input and returns a list containing the selected partition: `groups_partition`, which contains the cluster assignments for the crude spatial partition, `teams_partition`, which contains the cluster assignments for the refined partition, and `selected_iteration` that is the index of the selected iteration.
+
+```{r}
+out_partition = partition(DP.RST_output = SR_sim_test, method = "mode_based", 
+                          batch_size = 100) 
+```
+
+Now, let's evaluate the clustering accuracy of the obtained results and visualize both the crude and refined partitions.
+
+```{r}
+### Accuracy of the crude spatial partition
+accur_groups = adjustedRandIndex(sim_data$coords$cluster,
+                                 out_partition$groups_partition)
+accur_groups 
+
+
+### Accuracy of the refined partition
+# Binary membership matrix for groups and teams
+X <- table(sequence(length(out_partition$groups_partition)),
+           out_partition$groups_partition)
+Z <- table(sequence(length(out_partition$teams_partition)),
+           out_partition$teams_partition)
+
+# Get the membership of observations in each team
+obs_in_teams <- X %*% Z
+# Compute W such that w_ij = 1 if observation i and observation j share same team
+obs_in_teams_vec <- obs_in_teams %*% sort(unique(out_partition$teams_partition))
+
+accur_teams = adjustedRandIndex(sim_data$coords$cluster, obs_in_teams_vec) 
+accur_teams 
+```
+
+We observe that the accuracy of the refined partition is 100% ans is significantly better compared to the crude spatial partition. The accuracy of the crude spatial partition is only marginally improved over the initial clustering provided to the algorithm. 
+
+For visualizations, we use the custom functions `groups_plot` for the crude spatial partition and `teams_plot` for the refined partition.
+
+```{r, fig.width=8, fig.height=3, fig.align='center'}
+### Plot crude spatial partition
+k_groups_out <- length(unique(out_partition$groups_partition))
+
+# Plot the groups of observations by coordinates
+groups_plotted <- groups_plot(coords, out_partition$groups_partition, bnd) +
+  theme(legend.position = "none") + 
+  ggtitle(paste("Estimated Groups, k = ", k_groups_out, " , ARI = ", 
+                round(accur_groups, 3), 
+                sep = ""))
+
+### Plot the refined partition
+# Plot the teams of observations
+k_teams_out <- length(unique(out_partition$teams_partition))
+
+teams_plotted <- teams_plot(coords, out_partition$teams_partition, 
+                            out_partition$groups_partition, bnd) + 
+  theme(legend.position = "none") + 
+  ggtitle(paste("Estimated Teams, k = ", k_teams_out, " , ARI = ", 
+                round(accur_teams, 3), 
+                sep = ""))
+
+ggarrange(groups_plotted, teams_plotted)
+```
+
+In the plots, we can observe how DP-RST successfully clustered distant spatial regions that belong to the same cell type, leading to a more accurate and cohesive refined partition. This improved clustering demonstrates the algorithm’s ability to group non-adjacent spatial clusters based on shared cell-type characteristics.
+
+We can observe that the number of cell-type clusters in the refined partition differs from the crude spatial partition and is closer to the true number of clusters. This is because the algorithm determines the number of refined clusters in a data-driven manner.
+
+Hence, we can also analyze how often different numbers of clusters were selected throughout the run.
+
+```{r, fig.width=4, fig.height=3, fig.align='center'}
+### Calculate the frequency of the number of teams (refined clusters) 
+### chosen by the algorithm
+
+# Create a frequency table for the number of teams
+teams_freq <- as.data.frame(table(SR_sim_test$j_teams_out))
+
+# Create a bar plot to visualize the frequency of the number of teams
+teams_freq_plot <- ggplot(teams_freq, aes(x = Var1, y = Freq)) + 
+  geom_bar(stat = "identity", color = "black", fill = "grey") +
+  labs(title = "Frequency of teams", x = "# of Teams", y = "Frequency\n") +
+  theme_classic()
+teams_freq_plot
+```
+
+Finally, we check the marginal log-likelihood of the posterior samples. In the plot, we can observe jumps in the log-likelihood levels, which result from the Parallel Tempering process. Each jump indicates that the chain successfully escaped a local mode and found a more optimal partition, thanks to the Parallel Tempering mechanism.
+
+```{r, fig.width=4, fig.height=3, fig.align='center'}
+# Create a data frame from the marginal likelihood output in the DP-RST results
+data_lik1 <- data.frame(
+  MCMC_samples = 1:length(SR_sim_test$marginal_likelihood_out),
+  log_likelihood = SR_sim_test$marginal_likelihood_out
+)
+
+# Generate the plot of marginal log-likelihood over MCMC samples
+log_lik1 <- ggplot(data_lik1, aes(x = MCMC_samples, y = log_likelihood)) +
+  geom_line() +
+  labs(title = "Marginal log-likelihood", x = "MCMC samples",
+       y = "log-likelihood")
+log_lik1
+```
+
+
+
+

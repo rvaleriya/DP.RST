@@ -11,3 +11,13 @@ Imports:
     matrixNormal, Matrix
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Suggests: 
+    knitr,
+    rmarkdown,
+    class,
+    sf,
+    sp,
+    MASS,
+    ggpubr,
+    mclust
+VignetteBuilder: knitr
