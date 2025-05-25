@@ -15,7 +15,7 @@
 #' @keywords internal
 #'
 #' @noRd
-.MarginalLikelihood <- function(Y, cluster_assign, team_assign, k, j, sigmasq_mu, Sigma){
+.MarginalLikelihood_R <- function(Y, cluster_assign, team_assign, k, j, sigmasq_mu, Sigma){
   ### Here we calculate the log marginal likelihood ###
   n = nrow(Y)
   p = ncol(Y)
@@ -50,4 +50,17 @@
     (p/2)*log_det_omega - (p/2) * log_det_delta + exp_term
 
   return(marg_like)
+}
+#' Compute the Log Marginal Likelihood (fast C++ backend)
+#' @keywords internal
+#' @noRd
+.MarginalLikelihood <- function(Y, cluster_assign, team_assign,
+                                k, j, sigmasq_mu, Sigma)
+{
+  MarginalLikelihood_cpp(
+    Y,
+    as.integer(cluster_assign),
+    as.integer(team_assign),
+    k, j, sigmasq_mu, Sigma
+  )
 }
