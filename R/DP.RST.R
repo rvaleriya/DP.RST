@@ -53,17 +53,90 @@ DP.RST <- function(Y, graph0, init_val, hyperpar,
                    MCMC, BURNIN, THIN,
                    PT = TRUE, PT_diff = 0.1, seed = 1234) {
 
+  ## ------------------------------------------------------------------
+  ## Sanity checks on user-supplied arguments -------------------------
+  ## ------------------------------------------------------------------
+  .assert(is.numeric(seed) && length(seed) == 1, "`seed` must be a single numeric value.")
+
+  .assert(is.matrix(Y) || inherits(Y, "Matrix"), "`Y` must be a numeric matrix or sparse Matrix.")
+  .assert(is.numeric(Y), "`Y` must contain numeric values.")
+
+  n <- nrow(Y)
+  p = ncol(Y)  # Number of response variables (features)
+  .assert(n >= 1 && p >= 1, "`Y` must have at least one row and one column.")
+
+
+  .assert(inherits(graph0, "igraph"), "`graph0` must be an igraph object.")
+  .assert(igraph::vcount(graph0) == n,
+          sprintf("`graph0` must contain exactly %d vertices (one per row of Y).", n))
+
+
+  required_init <- c("mstgraph_lst", "cluster", "mu", "teams", "mu_teams", "sigmasq_y")
+  .assert(is.list(init_val), "`init_val` must be a list.")
+  missing_init <- setdiff(required_init, names(init_val))
+  .assert(length(missing_init) == 0,
+          paste0("`init_val` is missing required elements: ", paste(missing_init, collapse = ", ")))
+
+  # basic shape checks
+  M_init <- length(init_val$mstgraph_lst)
+  .assert(is.matrix(init_val$cluster), "`init_val$cluster` must be a matrix.")
+  .assert(is.matrix(init_val$teams),   "`init_val$teams` must be a matrix.")
+
+  # 1. columns must match (one per chain / temperature)
+  .assert(ncol(init_val$teams) == ncol(init_val$cluster),
+          "`teams` and `cluster` must have the same number of columns (chains).")
+
+  # 2. rows of teams must match #unique clusters in each chain
+  k_per_chain <- apply(init_val$cluster, 2, function(z) length(unique(z)))
+  .assert(all(nrow(init_val$teams) == k_per_chain),
+          "For every chain, nrow(`teams`) must equal the number of clusters in `cluster`.")
+
+  required_hyper <- c("M", "sigmasq_mu", "lambda_s", "nu", "k_max", "j_max", "temp")
+  .assert(is.list(hyperpar), "`hyperpar` must be a list.")
+  missing_hyper <- setdiff(required_hyper, names(hyperpar))
+  .assert(length(missing_hyper) == 0,
+          paste0("`hyperpar` is missing required elements: ", paste(missing_hyper, collapse = ", ")))
+  .assert(length(hyperpar$temp) == hyperpar$M,
+          "Length of `hyperpar$temp` must be equal to `hyperpar$M`.")
+  .assert(all(hyperpar$temp > 0), "All temperatures in `hyperpar$temp` must be positive.")
+  .assert(hyperpar$M == M_init,
+          "`hyperpar$M` must match the number of chains implied by `init_val`." )
+
+
+  .assert(is.numeric(MCMC) && length(MCMC) == 1 && MCMC > 0 && MCMC == as.integer(MCMC),
+          "`MCMC` must be a positive integer.")
+  .assert(is.numeric(BURNIN) && length(BURNIN) == 1 && BURNIN >= 0 && BURNIN == as.integer(BURNIN),
+          "`BURNIN` must be a non negative integer.")
+  .assert(is.numeric(THIN) && length(THIN) == 1 && THIN > 0 && THIN == as.integer(THIN),
+          "`THIN` must be a positive integer.")
+  .assert(BURNIN < MCMC, "`BURNIN` must be smaller than `MCMC`.")
+  .assert((MCMC - BURNIN) %% THIN == 0,
+          "`THIN` must divide evenly into `MCMC - BURNIN`.")
+
+  .assert(is.logical(PT) && length(PT) == 1, "`PT` must be TRUE or FALSE.")
+  .assert(is.numeric(PT_diff) && length(PT_diff) == 1 && PT_diff > 0,
+          "`PT_diff` must be a positive numeric value.")
+  if (PT) {
+    .assert(length(hyperpar$temp) > 1,
+            "`PT = TRUE` requires at least 2 temperatures in `hyperpar$temp`.")
+  } else {
+    PT_diff <- NA_real_
+  }
+
+  ## ------------------------------------------------------------------
+  ## End of sanity checks ---------------------------------------------
+  ## ------------------------------------------------------------------
+
   set.seed(seed) # Set seed for reproducibility
 
-  n = vcount(graph0)  # Number of vertices (observations)
-  p = ncol(Y)  # Number of response variables (features)
-
-  ### Extract hyperparameters and initial values
-  sigmasq_mu <- lambda_s <- nu <- M <- temp <- k_max <- j_max <- alpha <- NULL  # Declare variables
-  list2env(hyperpar, envir = environment())  # Load hyperparameters
+  n <- vcount(graph0)  # Number of vertices (observations)
+  p <- ncol(Y)         # Number of response variables (features)
 
   mstgraph_lst <- mu <- cluster <- teams <- mu_teams <- sigmasq_y <- NULL # Declare variables
   list2env(init_val, envir = environment()) # Load initial values
+
+  sigmasq_mu <- lambda_s <- nu <- M <- temp <- k_max <- j_max <- alpha <- NULL  # Declare variables
+  list2env(hyperpar, envir = environment())  # Load hyperparameters
 
   # Delete vertex names if they exist
   if('name' %in% names(vertex_attr(graph0))) {
