@@ -1,9 +1,17 @@
 Package: DP.RST
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Clustering Spatial Transcriptomics Data with Dirichlet Process Mixture of Random Spanning Trees
+Version: 1.0.0.0
 Authors@R: 
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: Implements a novel Bayesian nonparametric framework for clustering 
+    spatial transcriptomics data that can detect an unknown number of clusters 
+    in complex spatial domains. The method uses a two-layer partitioning 
+    approach: the first layer employs random spanning trees to create spatial 
+    partitions that respect tissue boundaries and capture irregular cluster shapes, 
+    while the second layer uses a Dirichlet process mixture model to refine these 
+    partitions by grouping spatially distant regions with similar gene expression 
+    profiles. Includes utilities for clustering, visualization, 
+  and posterior inference.
 License: GPL (>= 3)
 Encoding: UTF-8
 Imports:
